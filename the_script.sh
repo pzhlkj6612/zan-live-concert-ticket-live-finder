@@ -98,6 +98,18 @@ while read -r id; do
     continue
   fi
 
+  # Fetch cover image from event detail page (og:image meta tag)
+  thumbnail_url=$(curl -sS -L \
+    -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0' \
+    "https://www.zan-live.com/en/live/detail/${id}" | \
+    grep -oP '<meta property="og:image" content="\K[^"]+' || echo '')
+
+  if [[ -n "${thumbnail_url}" ]]; then
+    thumbnail_element="<img alt=\"${name}\" src=\"${thumbnail_url}\" height=\"64px\">"
+  else
+    thumbnail_element='<i>no thumbnail</i>'
+  fi
+
   # Decode HTML entities in name
   name=$(echo "${name}" | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g')
 
@@ -113,6 +125,8 @@ while read -r id; do
   <td>${close_datetime}</td>
   <td>
     <a href="https://www.zan-live.com/en/live/detail/${id}">${id}</a>
+    <br>
+    ${thumbnail_element}
     <br>
     ${name}
   </td>
@@ -138,7 +152,7 @@ cat <<'TABLE_HEADER'
 <thead>
   <th>START (JST)</th>
   <th>END (JST) ↓</th>
-  <th>Event ID & Title</th>
+  <th>Thumbnail, URL & Title</th>
   <th>Minimal price</th>
 </thead>
 TABLE_HEADER
