@@ -1,0 +1,87 @@
+name: Workflow
+on:
+  workflow_dispatch:
+  schedule:
+    # "At 17:01."
+    #  https://crontab.guru/#1_17_*_*_*
+    - cron: "1 17 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  fetch_publish:
+    name: Fetch and publish
+    runs-on: ubuntu-latest
+    env:
+      downloaded_html_file_name: "homepage.html"
+      generated_markdown_file_name: "upcoming_live.md"
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 1
+
+      - name: Fetch homepage from zan-live.com
+        run: |
+          set -e
+          curl \
+            --output '${{ env.downloaded_html_file_name }}' \
+            --show-error \
+            --silent \
+            --location \
+            -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8' \
+            -H 'accept-language: en-US,en;q=0.9' \
+            -H 'cache-control: no-cache' \
+            -H 'pragma: no-cache' \
+            -H 'sec-ch-ua: "Chromium";v="144", "Not(A:Brand";v="24", "Microsoft Edge";v="144"' \
+            -H 'sec-ch-ua-mobile: ?0' \
+            -H 'sec-ch-ua-platform: "Windows"' \
+            -H 'sec-fetch-dest: document' \
+            -H 'sec-fetch-mode: navigate' \
+            -H 'sec-fetch-site: cross-site' \
+            -H 'sec-fetch-user: ?1' \
+            -H 'upgrade-insecure-requests: 1' \
+            -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0' \
+            'https://www.zan-live.com/'
+          cat '${{ env.downloaded_html_file_name }}'
+
+      - name: Process data
+        run: |
+          set -e
+          1>'${{ env.generated_markdown_file_name }}' \
+            bash \
+            ./the_script.sh \
+              '432000' \
+              '${{ env.downloaded_html_file_name }}'
+
+      - name: Read ${{ env.generated_markdown_file_name }}
+        id: read_result_file
+        uses: juliangruber/read-file-action@v1.1.7
+        with:
+          path: ${{ env.generated_markdown_file_name }}
+
+      - name: What time?
+        id: my_luminous_watch
+        uses: josStorer/get-current-time@v2.1.2
+        with:
+          format: "YYYYMMDDHHmmss"
+
+      - name: Upload artifact "${{ env.downloaded_html_file_name }}"
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: ${{ steps.my_luminous_watch.outputs.formattedTime }}_${{ env.downloaded_html_file_name }}
+          path: ${{ env.downloaded_html_file_name }}
+
+      - name: Upload artifact "${{ env.generated_markdown_file_name }}"
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: ${{ steps.my_luminous_watch.outputs.formattedTime }}_${{ env.generated_markdown_file_name }}
+          path: ${{ env.generated_markdown_file_name }}
+
+      - name: Publish a release
+        uses: ncipollo/release-action@v1.20.0
+        with:
+          name: "Upcoming live: ${{ steps.my_luminous_watch.outputs.readableTime }}"
+          tag: ${{ steps.my_luminous_watch.outputs.formattedTime }}
+          artifacts: "${{ env.generated_markdown_file_name }}"
+          body: ${{ steps.read_result_file.outputs.content }}
