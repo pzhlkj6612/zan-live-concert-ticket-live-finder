@@ -52,74 +52,102 @@ while read -r id; do
     continue
   fi
 
-  # Get the first ticket with liveBeginDate that is not a placeholder (9999 year)
-  # Also filter out entries where liveEndDate is 9999
-  live_info=$(echo "${api_response}" | jq -r '
-    [.result[] | select(.liveBeginDate != null and .liveBeginDate != "" and (.liveBeginDate | test("^9999") | not) and .liveEndDate != null and (.liveEndDate | test("^9999") | not))] | .[0] // empty
+  # Get all valid non-archive tickets with live dates
+  # Filter out: null/empty dates, 9999-placeholder dates, and archive streams
+  live_entries=$(echo "${api_response}" | jq -c '
+    [.result[] | select(
+      .liveBeginDate != null and .liveBeginDate != "" and
+      (.liveBeginDate | test("^9999") | not) and
+      .liveEndDate != null and
+      (.liveEndDate | test("^9999") | not) and
+      (.isArchiveStream | not)
+    )]
   ')
 
-  if [[ -z "${live_info}" || "${live_info}" == "null" ]]; then
+  entry_count=$(echo "${live_entries}" | jq 'length')
+
+  if [[ "${entry_count}" -eq 0 ]]; then
     echo -e '\t''no valid live date, skipped' >/dev/stderr
     continue
   fi
 
-  name=$(echo "${live_info}" | jq -r '.liveName // "Unknown"')
-  live_begin_date=$(echo "${live_info}" | jq -r '.liveBeginDate')
-  live_end_date=$(echo "${live_info}" | jq -r '.liveEndDate // ""')
-
-  # Get minimum price from buyable tickets (isBuyTicket=true and buyPrice > 0)
+  # Get minimum price from buyable tickets (once per event)
   min_price=$(echo "${api_response}" | jq -r '
     [.result[] | select(.isBuyTicket == true and .buyPrice != null and .buyPrice > 0) | .buyPrice] | min // "N/A"
   ')
 
-  # Convert dates (ISO 8601 UTC to JST display)
-  if [[ -n "${live_begin_date}" && "${live_begin_date}" != "null" ]]; then
-    open_datetime=$(TZ='Asia/Tokyo' date -d "${live_begin_date}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "${live_begin_date}")
-  else
-    open_datetime="TBD"
+  # Format price (once per event)
+  if [[ "${min_price}" =~ ^[0-9]+$ ]]; then
+    min_price="¥$(printf "%'d" "${min_price}")"
   fi
 
-  if [[ -n "${live_end_date}" && "${live_end_date}" != "null" ]]; then
-    close_datetime=$(TZ='Asia/Tokyo' date -d "${live_end_date}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "${live_end_date}")
-  else
-    close_datetime="TBD"
-  fi
+  # Check if any entry passes the time filter before fetching thumbnail
+  has_valid_entry=false
+  for i in $(seq 0 $((entry_count - 1))); do
+    entry_end=$(echo "${live_entries}" | jq -r ".[$i].liveEndDate // \"\"")
+    entry_close_second=$(date -d "${entry_end}" '+%s' 2>/dev/null || echo "0")
+    if [[ ${now_second} -le ${entry_close_second} && ${entry_close_second} -le ${limit_second} ]]; then
+      has_valid_entry=true
+      break
+    fi
+  done
 
-  # Convert close date to unix timestamp for filtering/sorting
-  close_second=$(date -d "${live_end_date}" '+%s' 2>/dev/null || echo "0")
-
-  if [[ ${now_second} -gt ${close_second} ]]; then
-    echo -e '\t''already ended, ignored' >/dev/stderr
+  if [[ "${has_valid_entry}" != "true" ]]; then
+    echo -e '\t''no upcoming entries in range, skipped' >/dev/stderr
     continue
   fi
 
-  if [[ ${close_second} -gt ${limit_second} ]]; then
-    echo -e '\t''too far in the future, ignored' >/dev/stderr
-    continue
-  fi
-
-  # Fetch cover image from event detail page (og:image meta tag)
+  # Fetch cover image from event detail page (once per event)
   thumbnail_url=$(curl -sS -L \
     -H 'User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0' \
     "https://www.zan-live.com/en/live/detail/${id}" | \
     grep -oP '<meta property="og:image" content="\K[^"]+' || echo '')
 
-  if [[ -n "${thumbnail_url}" ]]; then
-    thumbnail_element="<img alt=\"${name}\" src=\"${thumbnail_url}\" height=\"64px\">"
-  else
-    thumbnail_element='<i>no thumbnail</i>'
-  fi
+  # Process each live entry
+  for i in $(seq 0 $((entry_count - 1))); do
+    live_info=$(echo "${live_entries}" | jq -c ".[$i]")
 
-  # Decode HTML entities in name
-  name=$(echo "${name}" | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g')
+    name=$(echo "${live_info}" | jq -r '.liveName // "Unknown"')
+    live_begin_date=$(echo "${live_info}" | jq -r '.liveBeginDate')
+    live_end_date=$(echo "${live_info}" | jq -r '.liveEndDate // ""')
 
-  # Format price
-  if [[ "${min_price}" =~ ^[0-9]+$ ]]; then
-    min_price="¥$(printf "%'d" "${min_price}")"
-  fi
+    # Convert dates (ISO 8601 UTC to JST display)
+    if [[ -n "${live_begin_date}" && "${live_begin_date}" != "null" ]]; then
+      open_datetime=$(TZ='Asia/Tokyo' date -d "${live_begin_date}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "${live_begin_date}")
+    else
+      open_datetime="TBD"
+    fi
 
-  row="$(
-    cat <<TABLE_ROW
+    if [[ -n "${live_end_date}" && "${live_end_date}" != "null" ]]; then
+      close_datetime=$(TZ='Asia/Tokyo' date -d "${live_end_date}" '+%Y-%m-%d %H:%M:%S' 2>/dev/null || echo "${live_end_date}")
+    else
+      close_datetime="TBD"
+    fi
+
+    # Convert close date to unix timestamp for filtering/sorting
+    close_second=$(date -d "${live_end_date}" '+%s' 2>/dev/null || echo "0")
+
+    if [[ ${now_second} -gt ${close_second} ]]; then
+      echo -e '\t'"entry ${i}: already ended, ignored" >/dev/stderr
+      continue
+    fi
+
+    if [[ ${close_second} -gt ${limit_second} ]]; then
+      echo -e '\t'"entry ${i}: too far in the future, ignored" >/dev/stderr
+      continue
+    fi
+
+    if [[ -n "${thumbnail_url}" ]]; then
+      thumbnail_element="<img alt=\"${name}\" src=\"${thumbnail_url}\" height=\"64px\">"
+    else
+      thumbnail_element='<i>no thumbnail</i>'
+    fi
+
+    # Decode HTML entities in name
+    name=$(echo "${name}" | sed 's/&nbsp;/ /g; s/&amp;/\&/g; s/&lt;/</g; s/&gt;/>/g; s/&quot;/"/g')
+
+    row="$(
+      cat <<TABLE_ROW
 <tr>
   <td>${open_datetime}</td>
   <td>${close_datetime}</td>
@@ -133,11 +161,12 @@ while read -r id; do
   <td>${min_price}</td>
 </tr>
 TABLE_ROW
-  )"
-  live_close_timestamp_list+=("${close_second}")
-  live_timestamp_code_row_list+=("${row}")
+    )"
+    live_close_timestamp_list+=("${close_second}")
+    live_timestamp_code_row_list+=("${row}")
 
-  echo -e '\t''collected' >/dev/stderr
+    echo -e '\t'"entry ${i}: collected" >/dev/stderr
+  done
 
 done <<< "${event_id_list}"
 
