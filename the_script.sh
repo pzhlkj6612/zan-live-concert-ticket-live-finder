@@ -32,8 +32,8 @@ echo "event IDs found: ${event_id_list}" >/dev/stderr
 
 # collect live
 
-declare -a live_timestamp_code_row_list
-declare -a live_close_timestamp_list
+declare -a live_timestamp_code_row_list=()
+declare -a live_close_timestamp_list=()
 
 while read -r id; do
   [[ -z "${id}" ]] && continue
@@ -196,6 +196,12 @@ if [[ ${#live_timestamp_code_row_list[@]} -gt 0 ]]; then
   for i in ${sorted_indices}; do
     echo "${live_timestamp_code_row_list[$i]}"
   done
+else
+  echo '<tr>'
+  for i in $(seq 4); do
+    echo '<td>none</td>'
+  done
+  echo '</tr>'
 fi
 
 echo '</table>'
