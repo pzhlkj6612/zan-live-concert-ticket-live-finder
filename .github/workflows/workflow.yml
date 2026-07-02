@@ -32,7 +32,7 @@ jobs:
 
       - name: Read ${{ env.generated_markdown_file_name }}
         id: read_result_file
-        uses: juliangruber/read-file-action@v1.1.7
+        uses: juliangruber/read-file-action@v1.1.8
         with:
           path: ${{ env.generated_markdown_file_name }}
 
