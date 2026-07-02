@@ -10,9 +10,33 @@ set -x
 jq --version >/dev/stderr
 
 offset_second="$1"
-homepage_html="$2"
+data_file="$2"
 
-file "${homepage_html}" >/dev/stderr
+
+# download data
+
+curl \
+  --output "${data_file}" \
+  --show-error \
+  --silent \
+  --location \
+  -H 'accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8' \
+  -H 'accept-language: en-US,en;q=0.9' \
+  -H 'cache-control: no-cache' \
+  -H 'pragma: no-cache' \
+  -H 'sec-ch-ua: "Chromium";v="144", "Not(A:Brand";v="24", "Microsoft Edge";v="144"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: document' \
+  -H 'sec-fetch-mode: navigate' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'sec-fetch-user: ?1' \
+  -H 'upgrade-insecure-requests: 1' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/144.0.0.0 Safari/537.36 Edg/144.0.0.0' \
+  'https://www.zan-live.com/'
+
+cat "${data_file}" >/dev/stderr
+file "${data_file}" >/dev/stderr
 
 now_second=$(date '+%s')
 limit_second=$((${now_second} + ${offset_second}))
@@ -23,7 +47,7 @@ limit_second=$((${now_second} + ${offset_second}))
 declare -a event_id_list
 
 event_id_list=$(
-  grep -oP '/(?:en/)?live/detail/\K[0-9]+' "${homepage_html}" | \
+  grep -oP '/(?:en/)?live/detail/\K[0-9]+' "${data_file}" | \
   sort -u
 )
 
