@@ -17,7 +17,7 @@ jobs:
       downloaded_html_file_name: "homepage.html"
       generated_markdown_file_name: "upcoming_live.md"
     steps:
-      - uses: actions/checkout@v6.0.2
+      - uses: actions/checkout@v7.0.0
         with:
           fetch-depth: 1
 
@@ -38,24 +38,24 @@ jobs:
 
       - name: What time?
         id: my_luminous_watch
-        uses: josStorer/get-current-time@v2.1.2
+        uses: josStorer/get-current-time@v2.1.3
         with:
           format: "YYYYMMDDHHmmss"
 
       - name: Upload artifact "${{ env.downloaded_html_file_name }}"
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ steps.my_luminous_watch.outputs.formattedTime }}_${{ env.downloaded_html_file_name }}
           path: ${{ env.downloaded_html_file_name }}
 
       - name: Upload artifact "${{ env.generated_markdown_file_name }}"
-        uses: actions/upload-artifact@v7.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: ${{ steps.my_luminous_watch.outputs.formattedTime }}_${{ env.generated_markdown_file_name }}
           path: ${{ env.generated_markdown_file_name }}
 
       - name: Publish a release
-        uses: ncipollo/release-action@v1.20.0
+        uses: ncipollo/release-action@v1.21.0
         with:
           name: "Upcoming live: ${{ steps.my_luminous_watch.outputs.readableTime }}"
           tag: ${{ steps.my_luminous_watch.outputs.formattedTime }}
